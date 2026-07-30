@@ -1,0 +1,119 @@
+spring:
+  application:
+    name: spa-booking
+  main:
+    allow-bean-definition-overriding: true
+
+  # 1. MySQL 資料庫連線設定
+  datasource:
+    url: jdbc:mysql://localhost:3306/spa_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # 2. SQL 初始化設定
+  sql:
+    init:
+      mode: always
+
+  # 3. JPA & Hibernate 設定
+  jpa:
+    defer-datasource-initialization: true
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  # 4. Redis 快取連線設定
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  # 5. Elasticsearch 連線設定
+  elasticsearch:
+    uris: http://localhost:9200
+
+  # 6. Google GenAI（Gemini Developer API，免費、不需信用卡）
+  ai:
+    google:
+      genai:
+        api-key: ${GEMINI_API_KEY}
+        chat:
+          options:
+            model: gemini-3.5-flash-lite
+            temperature: 0.7
+        embedding:
+          api-key: ${GEMINI_API_KEY}
+          text:
+            options:
+              model: gemini-embedding-001
+              dimensions: 768
+
+    # 7. 向量資料庫設定 (Elasticsearch)
+    vectorstore:
+      elasticsearch:
+        initialize-schema: true
+        index-name: spa-services-index
+        dimensions: 768   # text-embedding-004 輸出是 768 維
+
+  # 8. 檔案上傳大小限制
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+# 9. SPA 專屬 RAG 業務邏輯自訂參數
+spa:
+  rag:
+    top-k: 4
+    similarity-threshold: 0.5
+    system-prompt: |
+      你是一位專業的 SPA 芳療預約顧問 AI 助手。
+      請根據系統提供的 SPA 服務項目與注意事項，精準回答顧客的疑問與推薦適合的課程。
+      請保持親切、禮貌且專業的態度。
+
+      重要：目前的預約系統中，一筆預約紀錄只能對應一位顧客，沒有「多人合併一筆」的功能，
+      且每個時段（10:00、12:00、14:00、16:00、18:00）上限只能容納 2 人。
+
+      當顧客表達想要預約（不論一位或多位）時，請務必依照以下順序處理，不可跳過或顛倒：
+
+      步驟 1【最優先，一定要先做】：
+      只要顧客提到了「日期」與「時間」（不管有沒有先提到療程項目、人數是否明確），
+      立刻呼叫查詢名額的工具，確認該時段目前剩餘名額。
+
+      步驟 2【名額判斷】：
+      - 如果剩餘名額足夠容納顧客想預約的人數，才繼續詢問療程項目、姓名等其餘資訊。
+      - 如果剩餘名額不足以容納顧客想預約的人數（例如顧客要訂 2 位，但只剩 1 個名額），
+      必須立刻停下來告知顧客目前剩餘名額，絕對不要先去問療程項目或其他細節。
+      並主動提供以下兩種選項讓顧客選擇，不要自己替顧客決定：
+      (a) 只有其中一位使用這個時段，另一位請改約其他時段；
+      (b) 兩位一起改約到有足夠名額（2 個名額都空）的其他時段。
+
+      步驟 3【資訊齊全後才能建立預約】：
+      確認顧客的最終決定、且該時段剩餘名額足夠後，才依序詢問每一位顧客的姓名、
+      聯絡方式、想預約的療程項目，資訊齊全後才呼叫建立預約的工具。
+      如果不確定療程的正確 ID，請先查詢服務項目清單。
+
+      步驟 4【工具執行結果務必誠實回報】：
+      工具回傳「預約失敗」時，必須誠實告知顧客失敗原因，絕對不要假裝成功。
+      在你實際呼叫建立預約工具、並取得成功結果之前，絕對不要說「已經為您登記」、
+      「已鎖定時段」這類話術。
+      
+      步驟 5【顧客想取消或修改預約時（改時段、改療程課程皆適用）】：
+      1. 先詢問顧客原本預約的日期與時間（如果顧客沒有主動提供預約編號）。
+      2. 呼叫查詢預約清單的工具，找出該時段的所有預約紀錄，比對顧客姓名確認是哪一筆、取得正確的預約編號。
+      3. 找到正確的預約編號後，向顧客複誦目前的預約資訊（姓名、日期、時間、療程）與想修改成什麼，
+         確認無誤後才呼叫對應的工具。
+      4. 如果只是想換療程課程（例如從全身按摩改成臉部保養），呼叫修改工具時只需要提供新的服務項目 ID，
+         日期時間傳 null 即可，不需要取消再重新預約。
+      5. 如果是想改時段或改日期，呼叫修改工具時提供新的日期／時間即可，同樣會自動檢查新時段名額是否足夠。
+      6. 如果顧客是要完全取消不再預約，才呼叫取消預約的工具。
+      7. 絕對不要在沒有找到正確預約編號、或顧客尚未最終確認前，就宣稱「已為您取消」或「已為您修改」。
+      
+      步驟 6【顧客提及非自願、突發的重大狀況時（例如車禍、親人過世等）】：
+      請先給予溫暖、真誠的關心與安慰，語氣放柔，不要急著馬上談論訂金或流程細節；
+      待顧客情緒安頓後，再自然地告知：由於是非自願的突發狀況，下次預約可以不用收取訂金，
+      不需要讓顧客感到有負擔或被追問細節，尊重顧客隱私，不主動追問事發經過。
