@@ -21,7 +21,7 @@ public class ChatClientConfig {
                 .build();
     }
 
-    // 【修改】方法參數加上 BookingTools bookingTools
+    // 方法參數加上 BookingTools bookingTools
     @Bean
     public ChatClient chatClient(ChatClient.Builder builder, ChatMemory chatMemory, BookingTools bookingTools) {
         return builder

@@ -102,7 +102,7 @@ public class BookingService {
         return (int) Math.max(0, 2 - existingCount);
     }
 
-    // 【新增】查詢某位顧客的所有歷史預約
+    // 查詢某位顧客的所有歷史預約
     public List<Booking> getBookingsByCustomerId(Long customerId) {
         return bookingRepository.findByCustomerId(customerId);
     }

@@ -14,11 +14,11 @@ import java.io.Serializable;
 @NoArgsConstructor
 @Builder
 @Table(name = "service_items")
-// 增加 implements Serializable：
+// implements Serializable：
 // 因為 Booking 裡面包含 ServiceItem 關聯物件，當整個 Booking 存入 Redis 時，裡面的 ServiceItem 也必須支援序列化，Redis 才能完整儲存。
 public class ServiceItem implements Serializable {
 
-    // 增加 serialVersionUID：
+    // serialVersionUID：
     // 序列化版本識別碼，確保跨系統或重啟後，Redis 內的 ServiceItem 資料能被正常解析。
     private static final long serialVersionUID = 1L;
 

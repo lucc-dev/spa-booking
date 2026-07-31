@@ -65,7 +65,7 @@ public class BookingController {
             List<Booking> bookings = bookingService.getAllBookings();
             return ResponseEntity.ok(bookings);
         } catch (Exception e) {
-            e.printStackTrace(); // 關鍵：在 Console 印出異常 Log
+            e.printStackTrace(); // 在 Console 印出異常 Log
             return ResponseEntity.internalServerError().body("查詢失敗：" + e.getMessage());
         }
     }

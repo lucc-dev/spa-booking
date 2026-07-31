@@ -23,7 +23,7 @@ import java.time.LocalTime;
 // 當使用 Spring Cache / Redis 將預約紀錄進行快取時，Redis 必須透過此介面才能順利寫入與讀取物件，避免 NotSerializableException。
 public class Booking implements Serializable {
 
-    // 增加 serialVersionUID：
+    // serialVersionUID：
     // 序列化版本控制器。確保物件在寫入 Redis 與未來從 Redis 讀出時，Java 能核對版本一致性，避免類別修改後反序列化失敗。
     private static final long serialVersionUID = 1L;
 
