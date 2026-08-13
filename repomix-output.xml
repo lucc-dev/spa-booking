@@ -128,44 +128,6 @@ distributionType=only-script
 distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.16/apache-maven-3.9.16-bin.zip
 </file>
 
-<file path="src/main/java/com/chi/spa/booking/config/ChatClientConfig.java">
-package com.chi.spa.booking.config;
-
-import com.chi.spa.booking.tool.BookingTools;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
-import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
-import org.springframework.ai.chat.memory.MessageWindowChatMemory;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-public class ChatClientConfig {
-
-    // 記憶容器：記住每個對話最近 20 則訊息（超過會自動把最舊的丟掉）
-    @Bean
-    public ChatMemory chatMemory() {
-        return MessageWindowChatMemory.builder()
-                .chatMemoryRepository(new InMemoryChatMemoryRepository())
-                .maxMessages(20)
-                .build();
-    }
-
-    // 【修改】方法參數加上 BookingTools bookingTools
-    @Bean
-    public ChatClient chatClient(ChatClient.Builder builder, ChatMemory chatMemory, BookingTools bookingTools) {
-        return builder
-                .defaultSystem("你是一位專業且禮貌的 SPA 尊榮預約顧問，負責解答顧客關於服務項目、價格與預約流程的問題。")
-                // 把記憶功能掛上去，之後每次呼叫都會自動讀取/更新對話歷史
-                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
-                // 掛上工具，AI 之後可以實際查詢療程、建立預約
-                .defaultTools(bookingTools)
-                .build();
-    }
-}
-</file>
-
 <file path="src/main/java/com/chi/spa/booking/config/ElasticsearchConfig.java">
 package com.chi.spa.booking.config;
 
@@ -233,113 +195,6 @@ public class VectorStoreConfig {
                 .options(options)
                 .initializeSchema(true)
                 .build();
-    }
-}
-</file>
-
-<file path="src/main/java/com/chi/spa/booking/controller/BookingController.java">
-package com.chi.spa.booking.controller;
-
-import com.chi.spa.booking.dto.BookingRequest;
-import com.chi.spa.booking.exception.BusinessException;
-import com.chi.spa.booking.model.Booking;
-import com.chi.spa.booking.service.BookingService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-
-@RestController
-@RequestMapping("/bookings")
-@RequiredArgsConstructor
-public class BookingController {
-
-    private final BookingService bookingService;
-
-    @PostMapping
-    public ResponseEntity<?> createBooking(@RequestBody BookingRequest request) {
-        if (request == null) {
-            return ResponseEntity.badRequest().body("欄位錯誤：預約資料不能為空。");
-        }
-
-        if (isBlank(request.getCustomerName())) {
-            return ResponseEntity.badRequest().body("欄位錯誤：姓名必須填寫。");
-        }
-
-        if (request.getBookingDate() == null) {
-            return ResponseEntity.badRequest().body("欄位錯誤：預約日期必須填寫。");
-        }
-
-        if (request.getBookingTime() == null) {
-            return ResponseEntity.badRequest().body("欄位錯誤：預約時段必須填寫。");
-        }
-
-        if (request.getServiceItemId() == null) {
-            return ResponseEntity.badRequest().body("欄位錯誤：療程項目必須填寫。");
-        }
-
-        if (isBlank(request.getCustomerPhone()) && isBlank(request.getCustomerEmail())) {
-            return ResponseEntity.badRequest().body("欄位錯誤：電話或電子郵件必須填寫一項。");
-        }
-
-        try {
-            Booking savedBooking = bookingService.createBooking(request);
-            if (savedBooking == null) {
-                return ResponseEntity.badRequest().body("預約失敗，請檢查輸入資料。");
-            }
-            return ResponseEntity.ok(savedBooking);
-
-        } catch (BusinessException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-
-        } catch (Exception e) {
-            e.printStackTrace(); // 印出錯誤追蹤細節
-            return ResponseEntity.internalServerError().body("系統發生未知錯誤，請稍後再試。");
-        }
-    }
-
-    @GetMapping
-    public ResponseEntity<?> getAllBookings() {
-        try {
-            List<Booking> bookings = bookingService.getAllBookings();
-            return ResponseEntity.ok(bookings);
-        } catch (Exception e) {
-            e.printStackTrace(); // 關鍵：在 Console 印出異常 Log
-            return ResponseEntity.internalServerError().body("查詢失敗：" + e.getMessage());
-        }
-    }
-
-    @GetMapping("/{id}")
-    public ResponseEntity<?> getBookingById(@PathVariable Long id) {
-        try {
-            Booking booking = bookingService.getBookingById(id);
-            if (booking == null) {
-                return ResponseEntity.notFound().build();
-            }
-            return ResponseEntity.ok(booking);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.internalServerError().body("查詢預約失敗：" + e.getMessage());
-        }
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteBooking(@PathVariable Long id) {
-        try {
-            boolean deleted = bookingService.deleteBooking(id);
-            if (deleted) {
-                return ResponseEntity.noContent().build();
-            }
-            return ResponseEntity.notFound().build();
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.internalServerError().body("刪除預約失敗：" + e.getMessage());
-        }
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.isBlank();
     }
 }
 </file>
@@ -645,125 +500,6 @@ public class BusinessException extends RuntimeException {
 }
 </file>
 
-<file path="src/main/java/com/chi/spa/booking/model/Booking.java">
-package com.chi.spa.booking.model;
-
-import com.chi.spa.booking.dto.BookingRequest;
-import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.io.Serializable;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-
-@Data
-@Entity
-@Table(name = "bookings")
-@AllArgsConstructor
-@NoArgsConstructor
-@Builder
-// 增加 implements Serializable：
-// 讓 Booking 物件可以被「序列化」轉為二進位資料。
-// 當使用 Spring Cache / Redis 將預約紀錄進行快取時，Redis 必須透過此介面才能順利寫入與讀取物件，避免 NotSerializableException。
-public class Booking implements Serializable {
-
-    // 增加 serialVersionUID：
-    // 序列化版本控制器。確保物件在寫入 Redis 與未來從 Redis 讀出時，Java 能核對版本一致性，避免類別修改後反序列化失敗。
-    private static final long serialVersionUID = 1L;
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false)
-    private String customerName;
-
-    @Column(nullable = true)
-    private String customerEmail;
-
-    @Column(nullable = true)
-    private String customerPhone;
-
-    // 關聯到正式的顧客資料表，nullable = true 是為了相容舊資料
-    @ManyToOne
-    @JoinColumn(name = "customer_id", nullable = true)
-    private Customer customer;
-
-    @Column(nullable = false)
-    private LocalDate bookingDate;
-
-    @Column(nullable = false)
-    private LocalTime bookingTime;
-
-    // 建立與 ServiceItem 的多對一關聯
-    @ManyToOne
-    @JoinColumn(name = "service_item_id", nullable = false)
-    private ServiceItem serviceItem;
-
-    private LocalDateTime createdAt;
-
-    // 讓資料在寫入時，自動帶入當前的系統時間
-    @PrePersist
-    protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
-    }
-
-    // 多接收一個 Customer 參數，並在 builder 裡一併設定
-    public static Booking fromDto(BookingRequest request, ServiceItem serviceItem, Customer customer) {
-        return Booking.builder()
-                .customerName(request.getCustomerName())
-                .customerPhone(request.getCustomerPhone())
-                .customerEmail(request.getCustomerEmail())
-                .customer(customer)                         // 關聯到正式的顧客資料
-                .bookingDate(request.getBookingDate())
-                .bookingTime(request.getBookingTime())
-                .serviceItem(serviceItem)                  // 將查到的完整 ServiceItem 物件與這筆預約做關聯綁定
-                .build();                                  // 正式生成 Booking 實例
-    }
-}
-</file>
-
-<file path="src/main/java/com/chi/spa/booking/model/Customer.java">
-package com.chi.spa.booking.model;
-
-import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.io.Serializable;
-
-@Data
-@Entity
-@Table(name = "customers")
-@NoArgsConstructor
-@AllArgsConstructor
-public class Customer implements Serializable {
-
-    private static final long serialVersionUID = 1L;
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(name = "name", nullable = false)
-    private String name;
-
-    @Column(unique = true, length = 100)
-    private String email;
-
-    @Column(name = "phone_number", unique = true, length = 20)
-    private String phoneNumber;
-
-    @Enumerated(EnumType.STRING)
-    private Gender gender;
-}
-</file>
-
 <file path="src/main/java/com/chi/spa/booking/model/Gender.java">
 package com.chi.spa.booking.model;
 
@@ -784,48 +520,6 @@ public enum Gender {
         if (value == null) return null;
         return Gender.valueOf(value.toUpperCase());
     }
-}
-</file>
-
-<file path="src/main/java/com/chi/spa/booking/model/ServiceItem.java">
-package com.chi.spa.booking.model;
-
-import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.io.Serializable;
-
-@Data
-@Entity
-@AllArgsConstructor
-@NoArgsConstructor
-@Builder
-@Table(name = "service_items")
-// 增加 implements Serializable：
-// 因為 Booking 裡面包含 ServiceItem 關聯物件，當整個 Booking 存入 Redis 時，裡面的 ServiceItem 也必須支援序列化，Redis 才能完整儲存。
-public class ServiceItem implements Serializable {
-
-    // 增加 serialVersionUID：
-    // 序列化版本識別碼，確保跨系統或重啟後，Redis 內的 ServiceItem 資料能被正常解析。
-    private static final long serialVersionUID = 1L;
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, unique = true)
-    private String name;
-
-    private String description;
-
-    @Column(nullable = false)
-    private Integer durationMinutes;
-
-    @Column(nullable = false)
-    private Integer price;
 }
 </file>
 
@@ -871,151 +565,6 @@ import com.chi.spa.booking.model.ServiceItem;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ServiceItemRepository extends JpaRepository<ServiceItem, Long> {
-}
-</file>
-
-<file path="src/main/java/com/chi/spa/booking/service/BookingService.java">
-package com.chi.spa.booking.service;
-
-import com.chi.spa.booking.dto.BookingRequest;
-import com.chi.spa.booking.exception.BusinessException;
-import com.chi.spa.booking.model.Booking;
-import com.chi.spa.booking.model.Customer;
-import com.chi.spa.booking.model.ServiceItem;
-import com.chi.spa.booking.repository.BookingRepository;
-import com.chi.spa.booking.repository.ServiceItemRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.stereotype.Service;
-
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.util.List;
-
-@Service
-@RequiredArgsConstructor
-public class BookingService {
-
-    private final BookingRepository bookingRepository;
-    private final ServiceItemRepository serviceItemRepository;
-    private final CustomerService customerService;
-
-    @CacheEvict(value = "bookings", key = "'all'")
-    public Booking createBooking(BookingRequest request) {
-
-        ServiceItem serviceItem = serviceItemRepository.findById(request.getServiceItemId())
-                .orElse(null);
-
-        if (serviceItem == null) {
-            throw new BusinessException("預約失敗：找不到指定的服務項目（療程 ID 錯誤）。");
-        }
-
-        validateNotPastDate(request.getBookingDate());
-
-        LocalTime requestedTime = request.getBookingTime();
-
-        if (!isValidSlot(requestedTime)) {
-            throw new BusinessException("預約失敗：請選擇正確的預約時段（10:00, 12:00, 14:00, 16:00, 18:00）。");
-        }
-
-        long existingCount = bookingRepository.countByBookingDateAndBookingTime(
-                request.getBookingDate(),
-                request.getBookingTime()
-        );
-
-        if (existingCount >= 2) {
-            throw new BusinessException("預約失敗：該時段預約已滿（上限 2 人），請選擇其他時段。");
-        }
-
-        Customer customer = customerService.findOrCreateCustomer(
-                request.getCustomerName(),
-                request.getCustomerPhone(),
-                request.getCustomerEmail()
-        );
-
-        Booking booking = Booking.fromDto(request, serviceItem, customer);
-        return bookingRepository.save(booking);
-    }
-
-    @CacheEvict(value = {"bookings", "booking"}, allEntries = true)
-    public Booking updateBooking(Long id, Long newServiceItemId, LocalDate newDate, LocalTime newTime) {
-        Booking booking = bookingRepository.findById(id)
-                .orElseThrow(() -> new BusinessException("找不到預約編號 #" + id + "，無法修改。"));
-
-        if (newServiceItemId != null) {
-            ServiceItem serviceItem = serviceItemRepository.findById(newServiceItemId)
-                    .orElseThrow(() -> new BusinessException("找不到指定的服務項目（療程 ID 錯誤）。"));
-            booking.setServiceItem(serviceItem);
-        }
-
-        if (newDate != null || newTime != null) {
-            LocalDate targetDate = newDate != null ? newDate : booking.getBookingDate();
-            LocalTime targetTime = newTime != null ? newTime : booking.getBookingTime();
-
-            validateNotPastDate(targetDate);
-
-            if (!isValidSlot(targetTime)) {
-                throw new BusinessException("修改失敗：請選擇正確的預約時段（10:00, 12:00, 14:00, 16:00, 18:00）。");
-            }
-
-            long existingCount = bookingRepository.countByBookingDateAndBookingTime(targetDate, targetTime);
-            boolean sameSlot = targetDate.equals(booking.getBookingDate()) && targetTime.equals(booking.getBookingTime());
-            long effectiveCount = sameSlot ? existingCount - 1 : existingCount;
-
-            if (effectiveCount >= 2) {
-                throw new BusinessException("修改失敗：目標時段預約已滿（上限 2 人），請選擇其他時段。");
-            }
-
-            booking.setBookingDate(targetDate);
-            booking.setBookingTime(targetTime);
-        }
-
-        return bookingRepository.save(booking);
-    }
-
-    public int getRemainingSlots(LocalDate date, LocalTime time) {
-        long existingCount = bookingRepository.countByBookingDateAndBookingTime(date, time);
-        return (int) Math.max(0, 2 - existingCount);
-    }
-
-    // 查詢某位顧客的所有歷史預約
-    public List<Booking> getBookingsByCustomerId(Long customerId) {
-        return bookingRepository.findByCustomerId(customerId);
-    }
-
-    private void validateNotPastDate(LocalDate date) {
-        if (date.isBefore(LocalDate.now())) {
-            throw new BusinessException("預約失敗：無法預約已經過去的日期，請選擇今天或之後的日期。");
-        }
-    }
-
-    private boolean isValidSlot(LocalTime time) {
-        return time.equals(LocalTime.of(10, 0)) ||
-                time.equals(LocalTime.of(12, 0)) ||
-                time.equals(LocalTime.of(14, 0)) ||
-                time.equals(LocalTime.of(16, 0)) ||
-                time.equals(LocalTime.of(18, 0));
-    }
-
-    @Cacheable(value = "bookings", key = "'all'")
-    public List<Booking> getAllBookings() {
-        return bookingRepository.findAll();
-    }
-
-    @Cacheable(value = "booking", key = "#id")
-    public Booking getBookingById(Long id) {
-        return bookingRepository.findById(id).orElse(null);
-    }
-
-    @CacheEvict(value = {"bookings", "booking"}, allEntries = true)
-    public boolean deleteBooking(Long id) {
-        if (bookingRepository.existsById(id)) {
-            bookingRepository.deleteById(id);
-            return true;
-        }
-        return false;
-    }
 }
 </file>
 
@@ -3268,6 +2817,457 @@ Write-Output "MVN_CMD=$MAVEN_HOME/bin/$MVN_CMD"
 
 <file path="test.txt">
 test file created by Codex
+</file>
+
+<file path="src/main/java/com/chi/spa/booking/config/ChatClientConfig.java">
+package com.chi.spa.booking.config;
+
+import com.chi.spa.booking.tool.BookingTools;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class ChatClientConfig {
+
+    // 記憶容器：記住每個對話最近 20 則訊息（超過會自動把最舊的丟掉）
+    @Bean
+    public ChatMemory chatMemory() {
+        return MessageWindowChatMemory.builder()
+                .chatMemoryRepository(new InMemoryChatMemoryRepository())
+                .maxMessages(20)
+                .build();
+    }
+
+    // 方法參數加上 BookingTools bookingTools
+    @Bean
+    public ChatClient chatClient(ChatClient.Builder builder, ChatMemory chatMemory, BookingTools bookingTools) {
+        return builder
+                .defaultSystem("你是一位專業且禮貌的 SPA 尊榮預約顧問，負責解答顧客關於服務項目、價格與預約流程的問題。")
+                // 把記憶功能掛上去，之後每次呼叫都會自動讀取/更新對話歷史
+                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
+                // 掛上工具，AI 之後可以實際查詢療程、建立預約
+                .defaultTools(bookingTools)
+                .build();
+    }
+}
+</file>
+
+<file path="src/main/java/com/chi/spa/booking/controller/BookingController.java">
+package com.chi.spa.booking.controller;
+
+import com.chi.spa.booking.dto.BookingRequest;
+import com.chi.spa.booking.exception.BusinessException;
+import com.chi.spa.booking.model.Booking;
+import com.chi.spa.booking.service.BookingService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/bookings")
+@RequiredArgsConstructor
+public class BookingController {
+
+    private final BookingService bookingService;
+
+    @PostMapping
+    public ResponseEntity<?> createBooking(@RequestBody BookingRequest request) {
+        if (request == null) {
+            return ResponseEntity.badRequest().body("欄位錯誤：預約資料不能為空。");
+        }
+
+        if (isBlank(request.getCustomerName())) {
+            return ResponseEntity.badRequest().body("欄位錯誤：姓名必須填寫。");
+        }
+
+        if (request.getBookingDate() == null) {
+            return ResponseEntity.badRequest().body("欄位錯誤：預約日期必須填寫。");
+        }
+
+        if (request.getBookingTime() == null) {
+            return ResponseEntity.badRequest().body("欄位錯誤：預約時段必須填寫。");
+        }
+
+        if (request.getServiceItemId() == null) {
+            return ResponseEntity.badRequest().body("欄位錯誤：療程項目必須填寫。");
+        }
+
+        if (isBlank(request.getCustomerPhone()) && isBlank(request.getCustomerEmail())) {
+            return ResponseEntity.badRequest().body("欄位錯誤：電話或電子郵件必須填寫一項。");
+        }
+
+        try {
+            Booking savedBooking = bookingService.createBooking(request);
+            if (savedBooking == null) {
+                return ResponseEntity.badRequest().body("預約失敗，請檢查輸入資料。");
+            }
+            return ResponseEntity.ok(savedBooking);
+
+        } catch (BusinessException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+
+        } catch (Exception e) {
+            e.printStackTrace(); // 印出錯誤追蹤細節
+            return ResponseEntity.internalServerError().body("系統發生未知錯誤，請稍後再試。");
+        }
+    }
+
+    @GetMapping
+    public ResponseEntity<?> getAllBookings() {
+        try {
+            List<Booking> bookings = bookingService.getAllBookings();
+            return ResponseEntity.ok(bookings);
+        } catch (Exception e) {
+            e.printStackTrace(); // 在 Console 印出異常 Log
+            return ResponseEntity.internalServerError().body("查詢失敗：" + e.getMessage());
+        }
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getBookingById(@PathVariable Long id) {
+        try {
+            Booking booking = bookingService.getBookingById(id);
+            if (booking == null) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok(booking);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body("查詢預約失敗：" + e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteBooking(@PathVariable Long id) {
+        try {
+            boolean deleted = bookingService.deleteBooking(id);
+            if (deleted) {
+                return ResponseEntity.noContent().build();
+            }
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body("刪除預約失敗：" + e.getMessage());
+        }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+}
+</file>
+
+<file path="src/main/java/com/chi/spa/booking/model/Booking.java">
+package com.chi.spa.booking.model;
+
+import com.chi.spa.booking.dto.BookingRequest;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.io.Serializable;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+
+@Data
+@Entity
+@Table(name = "bookings")
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+// 增加 implements Serializable：
+// 讓 Booking 物件可以被「序列化」轉為二進位資料。
+// 當使用 Spring Cache / Redis 將預約紀錄進行快取時，Redis 必須透過此介面才能順利寫入與讀取物件，避免 NotSerializableException。
+public class Booking implements Serializable {
+
+    // serialVersionUID：
+    // 序列化版本控制器。確保物件在寫入 Redis 與未來從 Redis 讀出時，Java 能核對版本一致性，避免類別修改後反序列化失敗。
+    private static final long serialVersionUID = 1L;
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String customerName;
+
+    @Column(nullable = true)
+    private String customerEmail;
+
+    @Column(nullable = true)
+    private String customerPhone;
+
+    // 關聯到正式的顧客資料表，nullable = true 是為了相容舊資料
+    @ManyToOne
+    @JoinColumn(name = "customer_id", nullable = true)
+    private Customer customer;
+
+    @Column(nullable = false)
+    private LocalDate bookingDate;
+
+    @Column(nullable = false)
+    private LocalTime bookingTime;
+
+    // 建立與 ServiceItem 的多對一關聯
+    @ManyToOne
+    @JoinColumn(name = "service_item_id", nullable = false)
+    private ServiceItem serviceItem;
+
+    private LocalDateTime createdAt;
+
+    // 讓資料在寫入時，自動帶入當前的系統時間
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = LocalDateTime.now();
+    }
+
+    // 多接收一個 Customer 參數，並在 builder 裡一併設定
+    public static Booking fromDto(BookingRequest request, ServiceItem serviceItem, Customer customer) {
+        return Booking.builder()
+                .customerName(request.getCustomerName())
+                .customerPhone(request.getCustomerPhone())
+                .customerEmail(request.getCustomerEmail())
+                .customer(customer)                         // 關聯到正式的顧客資料
+                .bookingDate(request.getBookingDate())
+                .bookingTime(request.getBookingTime())
+                .serviceItem(serviceItem)                  // 將查到的完整 ServiceItem 物件與這筆預約做關聯綁定
+                .build();                                  // 正式生成 Booking 實例
+    }
+}
+</file>
+
+<file path="src/main/java/com/chi/spa/booking/model/Customer.java">
+package com.chi.spa.booking.model;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.io.Serializable;
+
+@Data
+@Entity
+@Table(name = "customers")
+@NoArgsConstructor
+@AllArgsConstructor
+public class Customer implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "name", nullable = false)
+    private String name;
+
+    @Column(unique = true, length = 100)
+    private String email;
+
+    @Column(name = "phone_number", unique = true, length = 20)
+    private String phoneNumber;
+
+    @Enumerated(EnumType.STRING)
+    private Gender gender;
+}
+</file>
+
+<file path="src/main/java/com/chi/spa/booking/model/ServiceItem.java">
+package com.chi.spa.booking.model;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.io.Serializable;
+
+@Data
+@Entity
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+@Table(name = "service_items")
+// implements Serializable：
+// 因為 Booking 裡面包含 ServiceItem 關聯物件，當整個 Booking 存入 Redis 時，裡面的 ServiceItem 也必須支援序列化，Redis 才能完整儲存。
+public class ServiceItem implements Serializable {
+
+    // serialVersionUID：
+    // 序列化版本識別碼，確保跨系統或重啟後，Redis 內的 ServiceItem 資料能被正常解析。
+    private static final long serialVersionUID = 1L;
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String name;
+
+    private String description;
+
+    @Column(nullable = false)
+    private Integer durationMinutes;
+
+    @Column(nullable = false)
+    private Integer price;
+}
+</file>
+
+<file path="src/main/java/com/chi/spa/booking/service/BookingService.java">
+package com.chi.spa.booking.service;
+
+import com.chi.spa.booking.dto.BookingRequest;
+import com.chi.spa.booking.exception.BusinessException;
+import com.chi.spa.booking.model.Booking;
+import com.chi.spa.booking.model.Customer;
+import com.chi.spa.booking.model.ServiceItem;
+import com.chi.spa.booking.repository.BookingRepository;
+import com.chi.spa.booking.repository.ServiceItemRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class BookingService {
+
+    private final BookingRepository bookingRepository;
+    private final ServiceItemRepository serviceItemRepository;
+    private final CustomerService customerService;
+
+    @CacheEvict(value = "bookings", key = "'all'")
+    public Booking createBooking(BookingRequest request) {
+
+        ServiceItem serviceItem = serviceItemRepository.findById(request.getServiceItemId())
+                .orElse(null);
+
+        if (serviceItem == null) {
+            throw new BusinessException("預約失敗：找不到指定的服務項目（療程 ID 錯誤）。");
+        }
+
+        validateNotPastDate(request.getBookingDate());
+
+        LocalTime requestedTime = request.getBookingTime();
+
+        if (!isValidSlot(requestedTime)) {
+            throw new BusinessException("預約失敗：請選擇正確的預約時段（10:00, 12:00, 14:00, 16:00, 18:00）。");
+        }
+
+        long existingCount = bookingRepository.countByBookingDateAndBookingTime(
+                request.getBookingDate(),
+                request.getBookingTime()
+        );
+
+        if (existingCount >= 2) {
+            throw new BusinessException("預約失敗：該時段預約已滿（上限 2 人），請選擇其他時段。");
+        }
+
+        Customer customer = customerService.findOrCreateCustomer(
+                request.getCustomerName(),
+                request.getCustomerPhone(),
+                request.getCustomerEmail()
+        );
+
+        Booking booking = Booking.fromDto(request, serviceItem, customer);
+        return bookingRepository.save(booking);
+    }
+
+    @CacheEvict(value = {"bookings", "booking"}, allEntries = true)
+    public Booking updateBooking(Long id, Long newServiceItemId, LocalDate newDate, LocalTime newTime) {
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("找不到預約編號 #" + id + "，無法修改。"));
+
+        if (newServiceItemId != null) {
+            ServiceItem serviceItem = serviceItemRepository.findById(newServiceItemId)
+                    .orElseThrow(() -> new BusinessException("找不到指定的服務項目（療程 ID 錯誤）。"));
+            booking.setServiceItem(serviceItem);
+        }
+
+        if (newDate != null || newTime != null) {
+            LocalDate targetDate = newDate != null ? newDate : booking.getBookingDate();
+            LocalTime targetTime = newTime != null ? newTime : booking.getBookingTime();
+
+            validateNotPastDate(targetDate);
+
+            if (!isValidSlot(targetTime)) {
+                throw new BusinessException("修改失敗：請選擇正確的預約時段（10:00, 12:00, 14:00, 16:00, 18:00）。");
+            }
+
+            long existingCount = bookingRepository.countByBookingDateAndBookingTime(targetDate, targetTime);
+            boolean sameSlot = targetDate.equals(booking.getBookingDate()) && targetTime.equals(booking.getBookingTime());
+            long effectiveCount = sameSlot ? existingCount - 1 : existingCount;
+
+            if (effectiveCount >= 2) {
+                throw new BusinessException("修改失敗：目標時段預約已滿（上限 2 人），請選擇其他時段。");
+            }
+
+            booking.setBookingDate(targetDate);
+            booking.setBookingTime(targetTime);
+        }
+
+        return bookingRepository.save(booking);
+    }
+
+    public int getRemainingSlots(LocalDate date, LocalTime time) {
+        long existingCount = bookingRepository.countByBookingDateAndBookingTime(date, time);
+        return (int) Math.max(0, 2 - existingCount);
+    }
+
+    // 查詢某位顧客的所有歷史預約
+    public List<Booking> getBookingsByCustomerId(Long customerId) {
+        return bookingRepository.findByCustomerId(customerId);
+    }
+
+    private void validateNotPastDate(LocalDate date) {
+        if (date.isBefore(LocalDate.now())) {
+            throw new BusinessException("預約失敗：無法預約已經過去的日期，請選擇今天或之後的日期。");
+        }
+    }
+
+    private boolean isValidSlot(LocalTime time) {
+        return time.equals(LocalTime.of(10, 0)) ||
+                time.equals(LocalTime.of(12, 0)) ||
+                time.equals(LocalTime.of(14, 0)) ||
+                time.equals(LocalTime.of(16, 0)) ||
+                time.equals(LocalTime.of(18, 0));
+    }
+
+    @Cacheable(value = "bookings", key = "'all'")
+    public List<Booking> getAllBookings() {
+        return bookingRepository.findAll();
+    }
+
+    @Cacheable(value = "booking", key = "#id")
+    public Booking getBookingById(Long id) {
+        return bookingRepository.findById(id).orElse(null);
+    }
+
+    @CacheEvict(value = {"bookings", "booking"}, allEntries = true)
+    public boolean deleteBooking(Long id) {
+        if (bookingRepository.existsById(id)) {
+            bookingRepository.deleteById(id);
+            return true;
+        }
+        return false;
+    }
+}
 </file>
 
 </files>
