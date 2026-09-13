@@ -98,6 +98,7 @@ public class BookingService {
         return bookingRepository.save(booking);
     }
 
+    // 查詢某個日期與時段剩餘的預約名額
     public int getRemainingSlots(LocalDate date, LocalTime time) {
         long existingCount = bookingRepository.countByBookingDateAndBookingTime(date, time);
         return (int) Math.max(0, 2 - existingCount);
