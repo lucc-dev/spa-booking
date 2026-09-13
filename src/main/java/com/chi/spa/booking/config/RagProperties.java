@@ -10,6 +10,6 @@ import org.springframework.context.annotation.Configuration;
 public class RagProperties {
 
     private int topK = 4;
-    private double similarityThreshold = 0.8;
+    private double similarityThreshold = 0.5;
     private String systemPrompt;
 }
